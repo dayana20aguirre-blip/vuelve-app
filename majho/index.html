@@ -158,6 +158,21 @@ input,select,textarea{font:inherit;color:inherit}
 .chip.cumple{background:var(--warn-soft);color:var(--warn)}
 .proximos{font-size:12.5px;color:var(--muted);padding:2px 2px 0;line-height:1.6}
 .proximos b{color:var(--ink);font-weight:600}
+
+/* avisos de cuidado: instalar y respaldar */
+.cuida{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--warn);
+  border-radius:12px;padding:14px 15px;display:flex;flex-direction:column;gap:9px;margin-bottom:12px;
+}
+.cuida b{font-size:14.5px;font-weight:700;line-height:1.3}
+.cuida p{font-size:13.5px;color:var(--ink-2);line-height:1.5}
+.cuida ol{margin:0;padding-left:17px;font-size:13.5px;color:var(--ink-2);line-height:1.6}
+.cuida .fila{display:flex;gap:8px}
+.cuida .fila .btn{flex:1}
+.cuida .cerrar{
+  background:none;border:none;color:var(--muted);font-size:12.5px;
+  text-decoration:underline;padding:2px;align-self:flex-start;
+}
 .pts{border-top:1px solid var(--line-soft);padding-top:10px;display:flex;flex-direction:column;gap:6px}
 .pts .l{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted)}
 .pts .l b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -751,6 +766,9 @@ function pintarHoy(){
   }
 
   var wrap = el('<div class="stack"></div>');
+
+  if(tocaRespaldo()) wrap.appendChild(bloqueRespaldo());
+  if(tocaInstalar()) wrap.appendChild(bloqueInstalar());
 
   var cumples = cumplenHoy();
   if(cumples.length){
@@ -1403,6 +1421,27 @@ if(window.claude && window.claude.use){
   try{ window.claude.use("downloads").then(function(d){ dl = d; }, function(){}); }catch(e){}
 }
 
+function descargarRespaldo(){
+  var txt = JSON.stringify(S, null, 1);
+  var nombre = "majho-clientas-" + HOY + ".json";
+  function hecho(){ guardarAviso("respaldo", HOY); cerrar(); pintar(); aviso("Respaldo guardado"); }
+  function caer(){
+    try{
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([txt], {type:"application/json"}));
+      a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+      hecho();
+    }catch(e){ aviso("No se pudo descargar aquí"); }
+  }
+  if(dl && dl.save){
+    dl.save({filename:nombre, data:txt}).then(hecho, function(err){
+      if(err && err.code === "declined") return;
+      caer();
+    });
+  } else caer();
+}
+
 function formAjustes(){
   abrir(
     '<h3>Ajustes y respaldo</h3>' +
@@ -1451,23 +1490,7 @@ function formAjustes(){
   var ej = document.getElementById("a-ej");
   if(ej) ej.addEventListener("click", function(){ cerrar(); cargarEjemplos(); });
 
-  document.getElementById("a-exp").addEventListener("click", function(){
-    var txt = JSON.stringify(S, null, 1);
-    var nombre = "majho-clientas-" + HOY + ".json";
-    if(dl && dl.save){
-      dl.save({filename:nombre, data:txt}).then(function(){ aviso("Respaldo guardado"); },
-        function(err){ if(err && err.code === "declined") return; caer(txt, nombre); });
-    } else caer(txt, nombre);
-    function caer(t, f){
-      try{
-        var a = document.createElement("a");
-        a.href = URL.createObjectURL(new Blob([t], {type:"application/json"}));
-        a.download = f; document.body.appendChild(a); a.click(); a.remove();
-        setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
-        aviso("Respaldo generado");
-      }catch(e){ aviso("No se pudo descargar aquí"); }
-    }
-  });
+  document.getElementById("a-exp").addEventListener("click", descargarRespaldo);
 
   document.getElementById("a-imp").addEventListener("change", function(){
     var f = this.files && this.files[0]; if(!f) return;
@@ -1892,6 +1915,79 @@ function abrirCola(){
   document.getElementById("q-pause").addEventListener("click", function(){ cerrar(); pintar(); });
 }
 
+
+/* ============ que la app se cuide sola ============ */
+/* Dos riesgos reales, dos avisos:
+   1. Sin instalar en la pantalla de inicio, Safari borra los datos de
+      los sitios que no se usan en 7 días. Instalada queda exenta.
+   2. Sin respaldo, un cambio de celular se lleva todo. */
+var AVISO_KEY = "majho_avisos";
+function avisos(){
+  try{ return JSON.parse(localStorage.getItem(AVISO_KEY) || "{}"); }catch(e){ return {}; }
+}
+function guardarAviso(k, v){
+  try{ var a = avisos(); a[k] = v; localStorage.setItem(AVISO_KEY, JSON.stringify(a)); }catch(e){}
+}
+
+function tocaInstalar(){
+  if(yaInstalada()) return false;
+  if(avisos().instalar === "no") return false;
+  return S.clientas.length > 0;      // recién cuando ya hay algo que perder
+}
+function tocaRespaldo(){
+  if(S.clientas.length < 20) return false;
+  var u = avisos().respaldo;
+  return !u || dias(u, HOY) >= 14;
+}
+
+function bloqueInstalar(){
+  var pasos = esIOS()
+    ? '<ol><li>Toca el botón de compartir, el cuadrito con la flecha hacia arriba</li>' +
+      '<li>Baja y elige <b>«Añadir a pantalla de inicio»</b></li></ol>'
+    : '<ol><li>Toca los tres puntitos del navegador</li>' +
+      '<li>Elige <b>«Instalar aplicación»</b> o <b>«Añadir a pantalla de inicio»</b></li></ol>';
+  var el2 = el(
+    '<div class="cuida">' +
+      '<b>Añádela a tu pantalla de inicio</b>' +
+      '<p>No es por comodidad: mientras la abras desde el navegador, el celular puede borrar tus clientas si pasas unos días sin entrar. Instalada, quedan a salvo.</p>' +
+      pasos +
+      (promptInstal ? '<div class="fila"><button class="btn" type="button" data-a="inst">Instalar ahora</button></div>' : '') +
+      '<button class="cerrar" type="button" data-a="luego">Ya la instalé / no me lo recuerdes</button>' +
+    '</div>'
+  );
+  var bi = el2.querySelector('[data-a="inst"]');
+  if(bi) bi.addEventListener("click", function(){
+    if(!promptInstal) return;
+    promptInstal.prompt();
+    promptInstal.userChoice.then(function(r){
+      promptInstal = null;
+      if(r && r.outcome === "accepted"){ guardarAviso("instalar","no"); pintar(); aviso("App instalada"); }
+    });
+  });
+  el2.querySelector('[data-a="luego"]').addEventListener("click", function(){
+    guardarAviso("instalar","no"); pintar();
+  });
+  return el2;
+}
+
+function bloqueRespaldo(){
+  var u = avisos().respaldo;
+  var el2 = el(
+    '<div class="cuida">' +
+      '<b>Haz un respaldo de tus clientas</b>' +
+      '<p>' + (u ? 'Tu último respaldo fue hace ' + dias(u, HOY) + ' días. '
+                 : 'Todavía no has hecho ninguno. ') +
+      'Ya tienes ' + S.clientas.length + ' clientas guardadas: si cambias de celular sin respaldo, se pierden.</p>' +
+      '<div class="fila"><button class="btn" type="button" data-a="bajar">Descargar respaldo</button>' +
+      '<button class="btn line" type="button" data-a="luego">Después</button></div>' +
+    '</div>'
+  );
+  el2.querySelector('[data-a="bajar"]').addEventListener("click", descargarRespaldo);
+  el2.querySelector('[data-a="luego"]').addEventListener("click", function(){
+    guardarAviso("respaldo", HOY); pintar(); aviso("Te lo recuerdo en dos semanas");
+  });
+  return el2;
+}
 
 /* ============ instalar en el equipo ============ */
 var promptInstal = null;
