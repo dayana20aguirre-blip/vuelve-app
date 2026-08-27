@@ -1,10 +1,9 @@
 <!doctype html>
-<html lang="es-PE">
+<html lang="es-PE" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FDF3F7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#131015" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#FDF3F7">
 <meta name="robots" content="noindex, nofollow">
 <meta name="description" content="Seguimiento de clientas.">
 <link rel="manifest" href="manifest.webmanifest">
@@ -395,6 +394,23 @@ input,select,textarea{font:inherit;color:inherit}
 <script>
 (function(){
 "use strict";
+
+/* El tema arranca SIEMPRE en claro: la identidad del salón es tinta
+   oscura sobre papel claro, y en modo oscuro se invierte y deja de
+   parecerse a su marca. Quien prefiera oscuro lo elige en Ajustes. */
+var TEMA_KEY = "majho_tema";
+function temaGuardado(){
+  try{ return localStorage.getItem(TEMA_KEY) || "claro"; }catch(e){ return "claro"; }
+}
+function aplicarTema(t){
+  var r = document.documentElement;
+  if(t === "auto") r.removeAttribute("data-theme");
+  else r.setAttribute("data-theme", t === "oscuro" ? "dark" : "light");
+  try{ localStorage.setItem(TEMA_KEY, t); }catch(e){}
+  var m = document.querySelector('meta[name="theme-color"]:not([media])');
+  if(m) m.setAttribute("content", getComputedStyle(document.body).backgroundColor);
+}
+aplicarTema(temaGuardado());
 
 /* ══════════════════════════════════════════════════════════════════════
    CONFIGURACIÓN DEL SALÓN
@@ -1398,6 +1414,13 @@ function formAjustes(){
       esIOS() ? '<p class="field hint" style="background:var(--surface-2);border-radius:10px;padding:10px 12px;line-height:1.5">' +
         '<b>Para tenerla como app en tu iPhone:</b> toca el botón de compartir (el cuadrito con la flecha hacia arriba) ' +
         'y elige «Añadir a pantalla de inicio».</p>' : '') +
+    '<div class="field"><label>Cómo se ve la app</label>' +
+      '<div class="fchips" id="a-tema">' +
+        ['claro','oscuro','auto'].map(function(t){
+          var n = {claro:"Claro", oscuro:"Oscuro", auto:"Como el celular"}[t];
+          return '<button type="button" data-t="' + t + '" aria-pressed="' + (temaGuardado()===t) + '">' + n + '</button>';
+        }).join("") +
+      '</div></div>' +
     '<button class="btn line" type="button" id="a-pg">Programa de puntos · ' +
       (S.puntos.activo ? 'activo' : 'apagado') + '</button>' +
     '<button class="btn" type="button" id="a-exp">Descargar respaldo</button>' +
@@ -1415,6 +1438,13 @@ function formAjustes(){
     promptInstal.userChoice.then(function(r){
       promptInstal = null;
       if(r && r.outcome === "accepted"){ cerrar(); aviso("App instalada"); }
+    });
+  });
+  document.getElementById("a-tema").addEventListener("click", function(e){
+    var b = e.target.closest("button[data-t]"); if(!b) return;
+    aplicarTema(b.dataset.t);
+    Array.prototype.forEach.call(this.querySelectorAll("button"), function(x){
+      x.setAttribute("aria-pressed", String(x === b));
     });
   });
   document.getElementById("a-pg").addEventListener("click", formPrograma);
