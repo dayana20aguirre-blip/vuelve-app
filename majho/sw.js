@@ -1,5 +1,5 @@
 /* Majho Salón — funciona sin internet una vez abierta la primera vez. */
-var CACHE = "majho-v10";
+var CACHE = "majho-v11";
 var SHELL = ["./", "./index.html", "./manifest.webmanifest",
              "./icon-192.png", "./icon-512.png", "./icon-512-maskable.png",
              "./apple-touch-icon.png", "./favicon.png"];
@@ -21,9 +21,11 @@ self.addEventListener("fetch", function(e){
   if(new URL(r.url).origin !== location.origin) return;   // fuentes de Google: las maneja el navegador
 
   if(r.mode === "navigate"){
-    // red primero, para que una actualización llegue sola; el caché es el respaldo sin internet
+    // Red primero y SIN pasar por el caché del navegador: si no se pone
+    // no-store, Safari devuelve su propia copia vieja y la actualización
+    // no llega nunca aunque el servidor ya la tenga.
     e.respondWith(
-      fetch(r).then(function(res){
+      fetch(r, {cache: "no-store"}).then(function(res){
         var copia = res.clone();
         caches.open(CACHE).then(function(c){ c.put("./index.html", copia); });
         return res;
