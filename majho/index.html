@@ -1217,7 +1217,7 @@ function formClienta(c){
     '<h3>' + (esNueva ? "Nueva clienta" : "Editar clienta") + '</h3>' +
     '<div class="field"><label>Nombre</label><input id="f-n" type="text" value="' + esc(c ? c.n : "") + '" placeholder="Ej. Rosa Quispe" autocomplete="off"></div>' +
     '<div class="field"><label>WhatsApp</label><input id="f-t" type="tel" inputmode="numeric" value="' + esc(c ? telBonito(c.tel) : "") + '" placeholder="987 654 321">' +
-      '<span class="hint">9 dígitos. Sirve para que el botón abra su chat directo.</span></div>' +
+      '<span class="hint">Obligatorio: es por donde le vas a escribir. 9 dígitos.</span></div>' +
     (esNueva ?
       '<div class="field"><label>Servicio que se hizo</label><select id="f-s">' + opcionesServicio(null) + '</select></div>' +
       '<div class="two">' +
@@ -1255,6 +1255,12 @@ function formClienta(c){
     var err = document.getElementById("f-err");
     if(!n){ err.textContent = "Ponle un nombre a la clienta."; err.classList.add("on"); return; }
     var tel = document.getElementById("f-t").value.replace(/\D/g, "");
+    if(tel.length < 9){
+      err.textContent = tel.length
+        ? "Ese número está incompleto. Son 9 dígitos."
+        : "Falta el WhatsApp. Sin número no le vas a poder escribir, que es para lo que sirve la app.";
+      err.classList.add("on"); return;
+    }
     var nota = document.getElementById("f-o").value.trim();
     var cd = parseInt(document.getElementById("f-cd").value, 10);
     var cm = document.getElementById("f-cm").value;
