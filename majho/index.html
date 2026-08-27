@@ -155,6 +155,10 @@ input,select,textarea{font:inherit;color:inherit}
 .chip.plain{background:var(--surface-2);color:var(--muted)}
 .chip.premio{background:var(--ink);color:var(--ground)}
 .chip.callada{background:var(--lost-soft);color:var(--lost);font-style:italic}
+.card.cumple{border-left:3px solid var(--warn);padding-left:12px}
+.chip.cumple{background:var(--warn-soft);color:var(--warn)}
+.proximos{font-size:12.5px;color:var(--muted);padding:2px 2px 0;line-height:1.6}
+.proximos b{color:var(--ink);font-weight:600}
 .pts{border-top:1px solid var(--line-soft);padding-top:10px;display:flex;flex-direction:column;gap:6px}
 .pts .l{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:12.5px;color:var(--muted)}
 .pts .l b{font-size:14px;color:var(--ink);font-variant-numeric:tabular-nums}
@@ -445,6 +449,9 @@ var SALON = {
     "Limpieza facial":"ya toca tu limpieza facial","Depilación":"ya toca tu depilación","Maquillaje":"te escribo por si tienes algún evento"
   },
 
+  /* Saludo de cumpleaños. {nombre} se reemplaza con el nombre de cada clienta. */
+  cumple: "¡Feliz cumpleaños, {nombre}! 🎉\n\nDe parte de todo el equipo de Majho Salón, que tengas un día precioso.\n\nY si te quieres consentir, esta semana te esperamos con algo especial 🎁",
+
   /* Mensajes de promo. {nombre} se reemplaza con el nombre de cada clienta. */
   plantillas: [
     ["Promo del mes",
@@ -560,7 +567,7 @@ function cargar(){
     var raw = localStorage.getItem(KEY);
     if(raw){ var p = JSON.parse(raw); if(p && p.clientas){ S = p; S.rescates = S.rescates || []; S.campHist = S.campHist || []; S.camp = S.camp || null;
         S.canjes = S.canjes || []; S.puntos = S.puntos || {activo:false, meta:500, premio:"S/ 50 de descuento"};
-        S.clientas.forEach(function(c){ c.pts = c.pts || 0; c.ptsTotal = c.ptsTotal || 0; c.hist = c.hist || []; c.nm = c.nm === true; }); } }
+        S.clientas.forEach(function(c){ c.pts = c.pts || 0; c.ptsTotal = c.ptsTotal || 0; c.hist = c.hist || []; c.nm = c.nm === true; c.mail = c.mail || ""; c.cumple = c.cumple || ""; }); } }
   }catch(e){}
   S.clientas.forEach(function(c){ var n = parseInt(c.id,10); if(n >= seq) seq = n+1; });
 }
@@ -600,6 +607,32 @@ function estadoClienta(c){
   return "aldia";
 }
 function noMolestar(c){ return c.nm === true; }
+
+/* Cumpleaños: se guarda solo día y mes ("MM-DD"), nunca el año —
+   nadie tiene que preguntarle la edad a una clienta. */
+function mmdd(iso){ return String(iso).slice(5); }
+function cumpleHoy(c){ return c.cumple && c.cumple === mmdd(HOY) && c.cw !== HOY.slice(0,4); }
+function diasParaCumple(c){
+  if(!c.cumple) return null;
+  var p = c.cumple.split("-"), hoy = new Date(ms(HOY));
+  var y = hoy.getUTCFullYear();
+  var d = Date.UTC(y, +p[0]-1, +p[1]);
+  if(d < ms(HOY)) d = Date.UTC(y+1, +p[0]-1, +p[1]);
+  return Math.round((d - ms(HOY)) / 86400000);
+}
+function cumplenHoy(){
+  return S.clientas.filter(function(c){ return !noMolestar(c) && cumpleHoy(c); });
+}
+function cumplenPronto(){
+  return S.clientas.filter(function(c){
+    if(noMolestar(c) || !c.cumple || cumpleHoy(c)) return false;
+    var d = diasParaCumple(c); return d !== null && d >= 1 && d <= 7;
+  }).sort(function(a,b){ return diasParaCumple(a) - diasParaCumple(b); });
+}
+function mensajeCumple(c){
+  return String(SALON.cumple || "¡Feliz cumpleaños, {nombre}! 🎉")
+    .replace(/\{nombre\}/g, String(c.n).trim().split(/\s+/)[0]);
+}
 function premioListo(c){ return S.puntos.activo && (c.pts || 0) >= S.puntos.meta; }
 function faltan(c){ return Math.max(0, S.puntos.meta - (c.pts || 0)); }
 
@@ -702,6 +735,40 @@ function pintarHoy(){
   }
 
   var wrap = el('<div class="stack"></div>');
+
+  var cumples = cumplenHoy();
+  if(cumples.length){
+    wrap.appendChild(el('<div class="eyebrow">🎉 Cumplen hoy · ' + cumples.length + '</div>'));
+    cumples.forEach(function(c){
+      var card = el(
+        '<article class="card cumple">' +
+          '<div class="hd"><div class="who"><b>' + esc(c.n) + '</b>' +
+          '<i>' + (c.hist && c.hist.length ? c.hist.length + (c.hist.length===1?' visita':' visitas') : 'Cumpleaños') + '</i></div>' +
+          '<span class="chip cumple">Hoy</span></div>' +
+          '<button class="btn" type="button">' +
+            '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.3A10 10 0 1 0 12 2z"/></svg>' +
+            'Saludarla por WhatsApp</button>' +
+        '</article>'
+      );
+      card.querySelector("button").addEventListener("click", function(){ formCumple(c); });
+      wrap.appendChild(card);
+    });
+  }
+
+  var pronto = cumplenPronto();
+  if(pronto.length){
+    wrap.appendChild(el(
+      '<p class="proximos">Cumplen pronto: ' + pronto.slice(0,4).map(function(c){
+        var d = diasParaCumple(c);
+        return '<b>' + esc(String(c.n).split(" ")[0]) + '</b> en ' + d + (d===1?' día':' días');
+      }).join(" · ") + (pronto.length > 4 ? ' · y ' + (pronto.length-4) + ' más' : '') + '</p>'
+    ));
+  }
+
+  if(cumples.length || pronto.length){
+    wrap.appendChild(el('<div class="eyebrow" style="margin-top:14px">Por escribir</div>'));
+  }
+
   if(!pend.length){
     wrap.appendChild(el(
       '<div class="empty"><b>Nada pendiente hoy</b>' +
@@ -789,6 +856,7 @@ function pintarClientas(){
     lista = lista.filter(function(c){
       return c.n.toLowerCase().indexOf(q) >= 0 ||
              String(c.tel||"").indexOf(q) >= 0 ||
+             String(c.mail||"").toLowerCase().indexOf(q) >= 0 ||
              c.svcs.some(function(sv){ return sv.s.toLowerCase().indexOf(q) >= 0; });
     });
   }
@@ -909,6 +977,20 @@ function pintarClientas(){
         card.appendChild(bloque);
       }
 
+      if(c.cumple){
+        var MES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","setiembre","octubre","noviembre","diciembre"];
+        var dd = diasParaCumple(c);
+        card.appendChild(el('<p style="font-size:13px;color:var(--muted)">🎂 Cumple el ' +
+          (+c.cumple.slice(3)) + ' de ' + MES[+c.cumple.slice(0,2) - 1] +
+          (dd === 0 ? ' · <b style="color:var(--warn)">es hoy</b>' : dd <= 30 ? ' · en ' + dd + ' días' : '') + '</p>'));
+      }
+      if(c.mail){
+        card.appendChild(el(
+          '<p style="font-size:13px"><a href="mailto:' + esc(c.mail) + '" ' +
+          'style="color:var(--muted);text-decoration:none;border-bottom:1px solid var(--line)">' +
+          esc(c.mail) + '</a></p>'
+        ));
+      }
       if(c.nota) card.appendChild(el('<p style="font-size:13px;color:var(--muted)">' + esc(c.nota) + '</p>'));
       var acts = el(
         '<div class="pair">' +
@@ -1058,6 +1140,36 @@ function registrarVisita(c, i){
   }
 }
 
+function formCumple(c){
+  var txt = mensajeCumple(c);
+  abrir(
+    '<h3>Saludo para ' + esc(String(c.n).split(" ")[0]) + '</h3>' +
+    '<div class="field"><label>Puedes editarlo antes de enviar</label>' +
+    '<textarea id="k-txt">' + esc(txt) + '</textarea></div>' +
+    (c.tel ? '' : '<p class="field hint" style="color:var(--accent)">Sin WhatsApp guardado. Copia el saludo y búscala en tu agenda.</p>') +
+    '<a class="btn" id="k-wa" target="_blank" rel="noopener" href="' + esc(waHref(c, txt)) + '">' +
+      '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0-8.6 15L2 22l5.2-1.3A10 10 0 1 0 12 2z"/></svg>' +
+      'Abrir WhatsApp</a>' +
+    '<button class="btn ghost" type="button" id="k-copy">Copiar saludo</button>' +
+    '<button class="btn line" type="button" id="k-mark">Ya la saludé</button>' +
+    '<button class="btn line" type="button" id="k-close">Cancelar</button>'
+  );
+  var ta = document.getElementById("k-txt");
+  ta.addEventListener("input", function(){ document.getElementById("k-wa").href = waHref(c, ta.value); });
+  document.getElementById("k-wa").addEventListener("click", marcar);
+  document.getElementById("k-mark").addEventListener("click", marcar);
+  document.getElementById("k-close").addEventListener("click", cerrar);
+  document.getElementById("k-copy").addEventListener("click", function(){
+    if(navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(ta.value).then(function(){ aviso("Saludo copiado"); }, function(){ aviso("No se pudo copiar"); });
+    else aviso("No se pudo copiar");
+  });
+  function marcar(){
+    c.cw = HOY.slice(0,4);          // saludada este año
+    guardar(); cerrar(); pintar(); aviso("🎉 " + String(c.n).split(" ")[0] + " saludada");
+  }
+}
+
 function formMensaje(c, svs){
   if(!Array.isArray(svs)) svs = [svs];
   var txt = mensaje(c, svs);
@@ -1112,6 +1224,19 @@ function formClienta(c){
         '<div class="field"><label>Última visita</label><input id="f-u" type="date" value="' + HOY + '" max="' + HOY + '"></div>' +
         '<div class="field"><label>Precio (S/)</label><input id="f-p" type="number" min="0" step="5" value="110"></div>' +
       '</div>' : '') +
+    '<div class="two"><div class="field"><label>Cumpleaños · día</label>' +
+      '<input id="f-cd" type="number" min="1" max="31" value="' + (c && c.cumple ? +c.cumple.slice(3) : "") + '" placeholder="opcional"></div>' +
+      '<div class="field"><label>Mes</label><select id="f-cm">' +
+      '<option value="">—</option>' +
+      ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","setiembre","octubre","noviembre","diciembre"]
+        .map(function(m, i){
+          var v = (i<9?"0":"") + (i+1);
+          return '<option value="' + v + '"' + (c && c.cumple && c.cumple.slice(0,2) === v ? " selected" : "") + '>' + m + '</option>';
+        }).join("") +
+      '</select></div></div>' +
+    '<div class="field"><label>Correo</label><input id="f-m" type="email" inputmode="email" autocapitalize="off" ' +
+      'value="' + esc(c ? (c.mail||"") : "") + '" placeholder="opcional">' +
+      '<span class="hint">Opcional. Se guarda en su ficha por si algún día lo necesitas.</span></div>' +
     '<div class="field"><label>Nota</label><input id="f-o" type="text" value="' + esc(c ? (c.nota||"") : "") + '" placeholder="Ej. alérgica al acrílico, prefiere sábados"></div>' +
     '<p class="err" id="f-err"></p>' +
     '<button class="btn" type="button" id="f-ok">' + (esNueva ? "Guardar clienta" : "Guardar cambios") + '</button>' +
@@ -1131,18 +1256,34 @@ function formClienta(c){
     if(!n){ err.textContent = "Ponle un nombre a la clienta."; err.classList.add("on"); return; }
     var tel = document.getElementById("f-t").value.replace(/\D/g, "");
     var nota = document.getElementById("f-o").value.trim();
+    var cd = parseInt(document.getElementById("f-cd").value, 10);
+    var cm = document.getElementById("f-cm").value;
+    var cumple = "";
+    if(cm && !isNaN(cd)){
+      var tope = [31,29,31,30,31,30,31,31,30,31,30,31][+cm - 1];
+      if(cd < 1 || cd > tope){
+        err.textContent = "Ese día no existe en el mes que elegiste."; err.classList.add("on"); return;
+      }
+      cumple = cm + "-" + (cd < 10 ? "0" : "") + cd;
+    } else if(cm || !isNaN(cd)){
+      err.textContent = "Para el cumpleaños necesito el día y el mes, o ninguno de los dos."; err.classList.add("on"); return;
+    }
+    var mail = document.getElementById("f-m").value.trim();
+    if(mail && mail.indexOf("@") < 0){
+      err.textContent = "Ese correo no parece correo. Déjalo vacío si no lo tienes."; err.classList.add("on"); return;
+    }
     if(esNueva){
       var s = document.getElementById("f-s").value;
       var u = document.getElementById("f-u").value || HOY;
       if(u > HOY){ err.textContent = "La última visita no puede ser en el futuro."; err.classList.add("on"); return; }
       var p = parseFloat(document.getElementById("f-p").value);
       var precio = isNaN(p) ? (META[s]?META[s].t:0) : p;
-      S.clientas.push({id:nuevoId(), n:n, tel:tel, nota:nota, pts:0, ptsTotal:0, canjes:[],
+      S.clientas.push({id:nuevoId(), n:n, tel:tel, mail:mail, cumple:cumple, cw:null, nota:nota, pts:0, ptsTotal:0, canjes:[],
         hist:[{f:u, s:s, t:precio}],
         svcs:[{s:s, c:META[s] ? META[s].c : 30, u:u, t:precio, w:null}]});
       aviso(n.split(" ")[0] + " agregada");
     } else {
-      c.n = n; c.tel = tel; c.nota = nota;
+      c.n = n; c.tel = tel; c.mail = mail; c.cumple = cumple; c.nota = nota;
       aviso("Cambios guardados");
     }
     guardar(); cerrar(); pintar();
@@ -1301,7 +1442,7 @@ function formAjustes(){
         if(!p || !Array.isArray(p.clientas)) throw new Error("formato");
         S = {v:1, clientas:p.clientas, rescates:p.rescates || [], camp:p.camp || null, campHist:p.campHist || [],
              canjes:p.canjes || [], puntos:p.puntos || {activo:false, meta:500, premio:"S/ 50 de descuento"}};
-        S.clientas.forEach(function(c){ c.pts = c.pts || 0; c.ptsTotal = c.ptsTotal || 0; c.hist = c.hist || []; c.nm = c.nm === true; });
+        S.clientas.forEach(function(c){ c.pts = c.pts || 0; c.ptsTotal = c.ptsTotal || 0; c.hist = c.hist || []; c.nm = c.nm === true; c.mail = c.mail || ""; c.cumple = c.cumple || ""; });
         seq = 1; S.clientas.forEach(function(c){ var n = parseInt(c.id,10); if(n >= seq) seq = n+1; });
         guardar(); cerrar(); pintar(); aviso("Respaldo restaurado · " + S.clientas.length + " clientas");
       }catch(e){ aviso("Ese archivo no es un respaldo válido"); }
@@ -1357,7 +1498,13 @@ function cargarEjemplos(){
       }
     });
     hist.sort(function(a,b){ return a.f < b.f ? -1 : 1; });
+    // cumpleaños de ejemplo: la primera cumple hoy, las demás repartidas
+    var cum = "";
+    if(i === 0) cum = mmdd(HOY);
+    else if(i < 4) cum = mmdd(masDias(HOY, i * 2));      // esta semana
+    else if(i < 7) cum = mmdd(masDias(HOY, 40 + i * 11)); // más adelante
     S.clientas.push({id:nuevoId(), n:nombre, tel:"98" + (7111222 + i * 111111),
+      mail:"", cumple:cum, cw:null,
       nota:"", pts:PTS[i % PTS.length], ptsTotal:PTS[i % PTS.length], canjes:[], hist:hist, svcs:svcs});
   });
   S.puntos.activo = true;   // para que el ejemplo muestre el programa funcionando
@@ -1739,6 +1886,7 @@ function pintar(){
   if(tab === "hoy"){
     titulo.textContent = "Hoy";
     nota.textContent = GEN(!S.clientas.length ? "Empecemos por tus clientas."
+      : cumplenHoy().length && !pend.length ? cumplenHoy().length + (cumplenHoy().length===1 ? " cumpleaños hoy" : " cumpleaños hoy")
       : pend.length ? (pend.length > TOPE_HOY
             ? "Las " + TOPE_HOY + " más urgentes de " + pend.length + " · " + soles(monto) + " en juego"
             : pend.length + (pend.length===1 ? " clienta por escribir · " : " clientas por escribir · ") + soles(monto) + " en juego")
